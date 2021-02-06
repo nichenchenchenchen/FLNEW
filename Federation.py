@@ -10,7 +10,7 @@ from PIL import Image
 import os
 import collections
 from random import shuffle
-from config import Conv
+from config import Conv,testBench
 import torch.nn.functional as F
 import threading
 use_cuda = torch.cuda.is_available()
@@ -31,14 +31,14 @@ def localTrain(Model,trainloader,args):
                 break
 
 def federation(fedModel,args,trainLoader,weights):
-    model = []
+    models = []
     thread = []
     for trainloader in trainLoader:
         Model = Conv(out_dim=args.out_dim, imshape_1=args.imshape_1, imshape_2=args.imshape_2,
                             in_chan=args.in_chan)
         Model.load_state_dict(fedModel.state_dict())
         Model.to(device)
-        model.append(Model)
+        models.append(Model)
         worker = threading.Thread(target = localTrain,args=(Model,trainloader,args))
         worker.start()
         thread.append(worker)
@@ -46,15 +46,15 @@ def federation(fedModel,args,trainLoader,weights):
     for t in thread:
         t.join()
 
-    worker_state_dict = [x.state_dict() for x in model]
+    worker_state_dict = [x.state_dict() for x in models]
     weight_keys = list(worker_state_dict[0].keys())
     fed_state_dict = collections.OrderedDict()
     for key in weight_keys:
         key_sum = 0.0
-        for i in range(len(model)):
+        for i in range(len(models)):
             key_sum += weights[i] * worker_state_dict[i][key]
         fed_state_dict[key] = key_sum
     #### update fed weights to fl model
     fedModel.load_state_dict(fed_state_dict)
 
-    return fedModel
+    return fedModel,models
